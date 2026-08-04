@@ -28,11 +28,10 @@ LAST_BALANCE_FILE = "last_balance.json"
 DEVICE_FILE_TEMPLATE = "{phone}.device"
 CONFIG_FILE = "config.json"
 
-# Gmail SMTP
-SMTP_SERVER = "smtp.gmail.com"
+# QQ邮箱 SMTP
+SMTP_SERVER = "smtp.qq.com"
 SMTP_PORT = 587
-SENDER_EMAIL = "aweizihao@gmail.com"
-RECEIVER_EMAIL = "aweizihao@gmail.com"
+RECEIVER_EMAIL = "aweizihao@gmail.com"  # 接收通知的邮箱
 
 # ── 加密工具 ──────────────────────────────────────────
 def _encrypt(obj, app_key: str) -> str:
@@ -56,17 +55,18 @@ def _api_call(endpoint: str, payload: dict, session_id: str, app_key: str) -> di
 def load_credentials():
     phone = os.getenv("WANXIAO_PHONE")
     password = os.getenv("WANXIAO_PASSWORD")
-    gmail_app_password = os.getenv("GMAIL_APP_PASSWORD")
+    mail_user = os.getenv("MAIL_USER")
+    mail_pass = os.getenv("MAIL_PASS")
 
     if phone and password:
-        return phone, password, gmail_app_password
+        return phone, password, mail_user, mail_pass
 
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             cfg = json.load(f)
-        return cfg["phone"], cfg["password"], cfg.get("gmail_app_password")
+        return cfg["phone"], cfg["password"], cfg.get("mail_user"), cfg.get("mail_pass")
 
-    raise RuntimeError(f"未找到凭据。请设置环境变量 WANXIAO_PHONE, WANXIAO_PASSWORD 或创建 {CONFIG_FILE}")
+    raise RuntimeError(f"未找到凭据。请设置环境变量或创建 {CONFIG_FILE}")
 
 # ── 设备持久化 ────────────────────────────────────────
 def load_device(phone: str) -> dict:
@@ -133,21 +133,21 @@ def get_card_info(session_id: str) -> dict:
     return json.loads(resp.json()["body"])
 
 # ── 邮件发送 ──────────────────────────────────────────
-def send_email(subject: str, body: str, app_password: str):
-    if not app_password:
-        print("[!] 未配置 Gmail App Password，跳过邮件发送")
+def send_email(subject: str, body: str, mail_user: str, mail_pass: str):
+    if not mail_user or not mail_pass:
+        print("[!] 未配置邮箱凭据，跳过邮件发送")
         return
 
     msg = MIMEText(body, "plain", "utf-8")
     msg["Subject"] = subject
-    msg["From"] = SENDER_EMAIL
+    msg["From"] = mail_user
     msg["To"] = RECEIVER_EMAIL
 
     try:
         server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15)
         server.starttls()
-        server.login(SENDER_EMAIL, app_password)
-        server.sendmail(SENDER_EMAIL, [RECEIVER_EMAIL], msg.as_string())
+        server.login(mail_user, mail_pass)
+        server.sendmail(mail_user, [RECEIVER_EMAIL], msg.as_string())
         server.quit()
         print("[+] 邮件已发送")
     except Exception as e:
@@ -168,7 +168,7 @@ def save_last_balance(data: dict):
 def main():
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 余额监控启动")
 
-    phone, password, gmail_app_password = load_credentials()
+    phone, password, mail_user, mail_pass = load_credentials()
     dev = load_device(phone)
 
     print(f"[*] 登录 {phone} ...")
@@ -232,7 +232,7 @@ def main():
         )
 
         print(f"\n[!] 余额变动: {direction} {abs(diff):.2f}")
-        send_email(f"[校园卡] 余额变动 - {direction} {abs(diff):.2f}", change_msg, gmail_app_password)
+        send_email(f"[校园卡] 余额变动 - {direction} {abs(diff):.2f}", change_msg, mail_user, mail_pass)
 
         save_last_balance(current_data)
     else:
