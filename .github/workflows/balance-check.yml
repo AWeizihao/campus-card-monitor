@@ -28,8 +28,7 @@ jobs:
         env:
           WANXIAO_PHONE: ${{ secrets.WANXIAO_PHONE }}
           WANXIAO_PASSWORD: ${{ secrets.WANXIAO_PASSWORD }}
-          MAIL_USER: ${{ secrets.MAIL_USER }}
-          MAIL_PASS: ${{ secrets.MAIL_PASS }}
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
         run: python balance_monitor.py
 
       - name: 提交余额变更记录

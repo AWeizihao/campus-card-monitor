@@ -8,8 +8,6 @@ import os
 import sys
 import hashlib
 import random
-import smtplib
-from email.mime.text import MIMEText
 from datetime import datetime
 
 import requests
@@ -28,10 +26,8 @@ LAST_BALANCE_FILE = "last_balance.json"
 DEVICE_FILE_TEMPLATE = "{phone}.device"
 CONFIG_FILE = "config.json"
 
-# QQ邮箱 SMTP
-SMTP_SERVER = "smtp.qq.com"
-SMTP_PORT = 587
-RECEIVER_EMAIL = "aweizihao@gmail.com"  # 接收通知的邮箱
+# PushPlus 推送
+PUSHPLUS_URL = "https://www.pushplus.plus/send"
 
 # ── 加密工具 ──────────────────────────────────────────
 def _encrypt(obj, app_key: str) -> str:
@@ -55,16 +51,15 @@ def _api_call(endpoint: str, payload: dict, session_id: str, app_key: str) -> di
 def load_credentials():
     phone = os.getenv("WANXIAO_PHONE")
     password = os.getenv("WANXIAO_PASSWORD")
-    mail_user = os.getenv("MAIL_USER")
-    mail_pass = os.getenv("MAIL_PASS")
+    pushplus_token = os.getenv("PUSHPLUS_TOKEN")
 
     if phone and password:
-        return phone, password, mail_user, mail_pass
+        return phone, password, pushplus_token
 
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             cfg = json.load(f)
-        return cfg["phone"], cfg["password"], cfg.get("mail_user"), cfg.get("mail_pass")
+        return cfg["phone"], cfg["password"], cfg.get("pushplus_token")
 
     raise RuntimeError(f"未找到凭据。请设置环境变量或创建 {CONFIG_FILE}")
 
@@ -133,25 +128,22 @@ def get_card_info(session_id: str) -> dict:
     return json.loads(resp.json()["body"])
 
 # ── 邮件发送 ──────────────────────────────────────────
-def send_email(subject: str, body: str, mail_user: str, mail_pass: str):
-    if not mail_user or not mail_pass:
-        print("[!] 未配置邮箱凭据，跳过邮件发送")
+def push_notify(subject: str, body: str, token: str):
+    if not token:
+        print("[!] 未配置 PushPlus Token，跳过通知")
         return
-
-    msg = MIMEText(body, "plain", "utf-8")
-    msg["Subject"] = subject
-    msg["From"] = mail_user
-    msg["To"] = RECEIVER_EMAIL
-
     try:
-        server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15)
-        server.starttls()
-        server.login(mail_user, mail_pass)
-        server.sendmail(mail_user, [RECEIVER_EMAIL], msg.as_string())
-        server.quit()
-        print("[+] 邮件已发送")
+        r = requests.post(PUSHPLUS_URL, json={
+            "token": token,
+            "title": subject,
+            "content": body,
+        }, timeout=15)
+        if r.json().get("code") == 200:
+            print("[+] 通知已推送")
+        else:
+            print(f"[!] 推送失败: {r.text}")
     except Exception as e:
-        print(f"[!] 邮件发送失败: {e}")
+        print(f"[!] 推送失败: {e}")
 
 # ── 余额记录 ──────────────────────────────────────────
 def load_last_balance() -> dict:
@@ -168,7 +160,7 @@ def save_last_balance(data: dict):
 def main():
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 余额监控启动")
 
-    phone, password, mail_user, mail_pass = load_credentials()
+    phone, password, pushplus_token = load_credentials()
     dev = load_device(phone)
 
     print(f"[*] 登录 {phone} ...")
@@ -232,7 +224,7 @@ def main():
         )
 
         print(f"\n[!] 余额变动: {direction} {abs(diff):.2f}")
-        send_email(f"[校园卡] 余额变动 - {direction} {abs(diff):.2f}", change_msg, mail_user, mail_pass)
+        push_notify(f"[校园卡] 余额变动 - {direction} {abs(diff):.2f}", change_msg, pushplus_token)
 
         save_last_balance(current_data)
     else:
