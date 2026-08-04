@@ -18,7 +18,30 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "campus_card"))
 from campus_card import des_3, rsa_encrypt as rsa
 
 # ── 配置 ──────────────────────────────────────────────
-HOST = "https://app.59wanmei.com/campus/cam_iface46"
+# 两个域名互为备用，GitHub Actions 可能被 59wanmei.com 的 WAF 拦截
+HOSTS = [
+    "https://server.17wanxiao.com/campus/cam_iface46",
+    "https://app.59wanmei.com/campus/cam_iface46",
+]
+
+def _try_hosts(endpoint: str, payload_func, headers: dict, json_body: bool = True, verify: bool = False, timeout: int = 15):
+    """依次尝试各 Host，返回第一个成功的响应"""
+    last_err = None
+    for host in HOSTS:
+        url = host + endpoint
+        try:
+            data = payload_func() if callable(payload_func) else payload_func
+            if json_body:
+                resp = requests.post(url, headers=headers, json=data, verify=verify, timeout=timeout)
+            else:
+                resp = requests.post(url, headers=headers, data=data, verify=verify, timeout=timeout)
+            if resp.status_code == 200:
+                return resp, host
+            last_err = f"{host} HTTP {resp.status_code}: {resp.text[:100]}"
+        except Exception as e:
+            last_err = f"{host} {e}"
+            continue
+    raise RuntimeError(f"All hosts failed: {last_err}")
 CARD_HOST = "https://server.17wanxiao.com/YKT_Interface/xyk"
 WANXIAO_VERSION = 10552101
 UA = "Dalvik/2.1.0 (Linux; U; Android 12; LGE-AN10 Build/HUAWEI)"
@@ -41,11 +64,12 @@ def _sign(payload: dict) -> str:
 
 def _api_call(endpoint: str, payload: dict, session_id: str, app_key: str) -> dict:
     body = {"session": session_id, "data": _encrypt(payload, app_key)}
-    return requests.post(
-        HOST + endpoint,
-        headers={"campusSign": _sign(body), "User-Agent": UA},
-        json=body, verify=False, timeout=15,
-    ).json()
+    resp, host = _try_hosts(
+        endpoint,
+        body,
+        {"campusSign": _sign(body), "User-Agent": UA},
+    )
+    return resp.json()
 
 # ── 凭据加载 ──────────────────────────────────────────
 def load_credentials():
@@ -91,17 +115,17 @@ def exchange_secret(rsa_public: str | None = None, rsa_private: str | None = Non
         pub, priv = rsa.create_key_pair(1024)
     else:
         pub, priv = rsa_public, rsa_private
-    resp = requests.post(
-        HOST + "/exchangeSecretkey.action",
-        headers={"User-Agent": UA},
-        json={"key": pub}, verify=False, timeout=15,
+
+    resp, host = _try_hosts(
+        "/exchangeSecretkey.action",
+        {"key": pub},
+        {"User-Agent": UA},
     )
-    if resp.status_code != 200:
-        raise RuntimeError(f"exchangeSecret HTTP {resp.status_code}: {resp.text[:200]}")
+
     try:
         info = json.loads(rsa.rsa_decrypt(resp.text.encode(resp.apparent_encoding), priv))
     except Exception as e:
-        raise RuntimeError(f"RSA decrypt failed: {e}\nResponse[{resp.status_code}]: {resp.text[:200]}") from e
+        raise RuntimeError(f"RSA decrypt failed ({host}): {e}\nResponse: {resp.text[:200]}") from e
     return {"sessionId": info["session"], "appKey": info["key"][:24], "rsaPublic": pub, "rsaPrivate": priv}
 
 # ── 密码登录 ──────────────────────────────────────────
