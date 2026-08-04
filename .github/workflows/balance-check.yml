@@ -29,6 +29,7 @@ jobs:
           WANXIAO_PHONE: ${{ secrets.WANXIAO_PHONE }}
           WANXIAO_PASSWORD: ${{ secrets.WANXIAO_PASSWORD }}
           PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+          DEVICE_INFO: ${{ secrets.DEVICE_INFO }}
         run: python balance_monitor.py
 
       - name: 提交余额变更记录

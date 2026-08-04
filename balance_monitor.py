@@ -69,6 +69,11 @@ def load_device(phone: str) -> dict:
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             return json.loads(f.read())
+    dev_info = os.getenv("DEVICE_INFO")
+    if dev_info:
+        dev = json.loads(dev_info)
+        dev["verified"] = True
+        return dev
     return {"deviceId": str(random.randint(999999999999999, 9999999999999999)), "verified": False}
 
 def save_device(phone: str, dev: dict):
@@ -91,7 +96,12 @@ def exchange_secret(rsa_public: str | None = None, rsa_private: str | None = Non
         headers={"User-Agent": UA},
         json={"key": pub}, verify=False, timeout=15,
     )
-    info = json.loads(rsa.rsa_decrypt(resp.text.encode(resp.apparent_encoding), priv))
+    if resp.status_code != 200:
+        raise RuntimeError(f"exchangeSecret HTTP {resp.status_code}: {resp.text[:200]}")
+    try:
+        info = json.loads(rsa.rsa_decrypt(resp.text.encode(resp.apparent_encoding), priv))
+    except Exception as e:
+        raise RuntimeError(f"RSA decrypt failed: {e}\nResponse[{resp.status_code}]: {resp.text[:200]}") from e
     return {"sessionId": info["session"], "appKey": info["key"][:24], "rsaPublic": pub, "rsaPrivate": priv}
 
 # ── 密码登录 ──────────────────────────────────────────
