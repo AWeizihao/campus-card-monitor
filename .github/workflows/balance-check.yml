@@ -1,0 +1,39 @@
+name: 校园卡余额监控
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check-balance:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装依赖
+        run: pip install requests pycryptodome urllib3
+
+      - name: 运行余额监控
+        env:
+          WANXIAO_PHONE: ${{ secrets.WANXIAO_PHONE }}
+          WANXIAO_PASSWORD: ${{ secrets.WANXIAO_PASSWORD }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: python balance_monitor.py
+
+      - name: 提交余额变更记录
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add last_balance.json
+          git diff --staged --quiet || (git commit -m "chore: update balance [skip ci]" && git push)

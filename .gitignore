@@ -1,0 +1,7 @@
+config.json
+*.device
+last_balance.json
+campus_card/.venv/
+__pycache__/
+*.pyc
+.DS_Store
