@@ -21,27 +21,31 @@ from campus_card import des_3, rsa_encrypt as rsa
 # 两个域名互为备用，GitHub Actions 可能被 59wanmei.com 的 WAF 拦截
 HOSTS = [
     "https://server.17wanxiao.com/campus/cam_iface46",
+    "https://app.17wanxiao.com/campus/cam_iface46",
+    "https://server.59wanmei.com/campus/cam_iface46",
     "https://app.59wanmei.com/campus/cam_iface46",
 ]
 
 def _try_hosts(endpoint: str, payload_func, headers: dict, json_body: bool = True, verify: bool = False, timeout: int = 15):
-    """依次尝试各 Host，返回第一个成功的响应"""
-    last_err = None
+    errors = []
     for host in HOSTS:
         url = host + endpoint
         try:
             data = payload_func() if callable(payload_func) else payload_func
+            h = dict(headers)
+            h.setdefault("Content-Type", "application/json;charset=UTF-8")
+            h.setdefault("Accept", "application/json")
+            h.setdefault("Accept-Language", "zh-CN,zh;q=0.9")
             if json_body:
-                resp = requests.post(url, headers=headers, json=data, verify=verify, timeout=timeout)
+                resp = requests.post(url, headers=h, json=data, verify=verify, timeout=timeout)
             else:
-                resp = requests.post(url, headers=headers, data=data, verify=verify, timeout=timeout)
+                resp = requests.post(url, headers=h, data=data, verify=verify, timeout=timeout)
             if resp.status_code == 200:
                 return resp, host
-            last_err = f"{host} HTTP {resp.status_code}: {resp.text[:100]}"
+            errors.append(f"{host}: HTTP {resp.status_code} - {resp.text[:80]}")
         except Exception as e:
-            last_err = f"{host} {e}"
-            continue
-    raise RuntimeError(f"All hosts failed: {last_err}")
+            errors.append(f"{host}: {e}")
+    raise RuntimeError(f"All hosts failed:\n" + "\n".join(errors))
 CARD_HOST = "https://server.17wanxiao.com/YKT_Interface/xyk"
 WANXIAO_VERSION = 10552101
 UA = "Dalvik/2.1.0 (Linux; U; Android 12; LGE-AN10 Build/HUAWEI)"
